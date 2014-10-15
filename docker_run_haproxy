@@ -1,0 +1,22 @@
+#!/bin/bash
+
+CONFSERVER=${1-'confserver:6666'}
+
+DOCK_BRIDGE_IP=$(ip addr show docker0 | grep -e "inet.*docker0" | awk -F '[ \/ ]+' '{print $3}')
+
+EXPOSED_PORTS=$(curl --data-binary "-p {{or .stats.port 11443}}:{{or .stats.port 11443}} {{range .tcp}}-p $DOCK_BRIDGE_IP:{{.port}}:{{.port}} {{end}} {{range .redis}}-p $DOCK_BRIDGE_IP:{{.port}}:{{.port}} {{end}}" 'confserver:6666/services')
+
+RUN_CMD="docker run -p 80:80 $EXPOSED_PORTS -d haproxy:latest"
+
+echo -e "\033[32m"
+echo "Exposing 80 and .services.stats.port publicly."
+echo "Exposing .services.redis.*.ports and .services.tcp.*.ports only on the docker bridge IP $DOCK_BRIDGE_IP"
+echo "Running the haproxy docker container with:"
+echo $RUN_CMD
+echo -e "\e[0m"
+
+CONTAINER_ID=$($RUN_CMD)
+
+echo "Look at the haproxy configuration in the docker logs:"
+echo "docker logs $CONTAINER_ID"
+

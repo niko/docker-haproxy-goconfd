@@ -1,0 +1,87 @@
+global
+  log loghost local0 info
+  maxconn 4096
+  chroot /var/lib/haproxy
+  user haproxy
+  group haproxy
+  daemon
+  #debug
+  #quiet
+
+defaults HTTP
+  log global
+  mode  http
+  option  httplog
+  option  dontlognull
+  option  forwardfor
+  option  http-server-close
+  option  redispatch
+  #option  httpchk GET /
+  retries  3
+  maxconn  2000
+  timeout  connect 5000
+  timeout client  50000
+  timeout server  50000
+
+listen stats *:11443
+  # should be https
+  stats enable
+  stats realm Haproxy\ Statistics
+  stats uri /
+  stats refresh 5s
+  stats auth {{.stats.auth}}
+
+frontend http
+  bind *:80
+  {{ range $name, $service := .http }}
+    acl {{$name}}_private_acl hdr(host) -i {{$name}}.service src 127.0.0.1/8 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16
+    use_backend {{$name}}_backend if {{$name}}_private_acl
+    {{ if $service.public }}
+      {{ range $service.public.domains }}
+        acl {{$name}}_public_{{.}}_acl hdr(host) -i {{.}}
+        use_backend {{$name}}_backend if {{$name}}_public_{{.}}_acl {{ or $service.public.acl "" }}
+      {{ end }}
+    {{ end }}
+  {{ end }}
+
+
+{{range $name, $service := .http}}
+backend {{$name}}_backend
+  balance roundrobin
+  {{ range $service.backend_servers }}
+    server {{$name}}_{{.}} {{.}} check
+  {{ end }}
+  http-response set-header X-FRONTEND %f
+  http-response set-header X-BACKEND %b
+  http-response set-header X-BACKEND-SERVER %s
+{{end}}
+
+
+defaults REDIS
+  mode tcp
+  log global
+  timeout connect  4s
+  timeout server  30s
+  timeout client  30s
+  retries  3
+  maxconn  2000
+  option tcp-check
+
+{{ range $name, $service := .redis }}
+frontend redis_{{ $name }}_frontend
+  bind *:{{ $service.port }}
+  default_backend redis_{{ $name }}_backend
+
+backend redis_{{ $name }}_backend
+  tcp-check send PING\r\n
+  tcp-check expect string +PONG
+  {{ if $service.role }}
+    tcp-check send info\ replication\r\n
+    tcp-check expect string role:{{ $service.role }}
+  {{ end }}
+  tcp-check send QUIT\r\n
+  tcp-check expect string +OK
+  {{ range $service.backend_servers }}
+    server {{ $name }}_{{.}} {{.}} check inter 1s
+  {{ end }}
+{{ end }}
