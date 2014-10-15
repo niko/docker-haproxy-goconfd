@@ -11,3 +11,5 @@ Basic concept:
 * run haproxy on each docker host to route the network to the right service on this or other hosts.
 * make all http services use port 80 and route according to the host header.
 * expose selected backends to the world via port 80.
+
+See example.conf.json for a basic example configuration served by goconfd.
