@@ -8,6 +8,8 @@ CONFIG="haproxy.cfg"
 DOCK_HOST_IP=$(route -n | awk '/UG[ \t ]/{print $2}')
 echo -e "nameserver $DOCK_HOST_IP\nnameserver 83.142.86.1\nnameserver 83.142.86.120\nsearch lautcloud" > /etc/resolv.conf
 
+trap 'killall curl; killall haproxy; exit $?' INT TERM EXIT
+
 function load_config_and_reload {
   WAIT=$1
   echo curl --data-binary @haproxy.cfg.template 'confserver:6666/services'$WAIT
